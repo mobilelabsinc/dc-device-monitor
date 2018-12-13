@@ -21,16 +21,22 @@ def query_devices(props={}):
 	return requests.get(url, auth=(user, token), params=props, verify=False)
 
 def massage_devices(devices, keys):
-	devices = [ { k: d[k] for k in keys if k in d} for d in data]
-	
 	datekeys = ('lastDisconnectedAt', 'lastConnectedAt',
 		'nextReservationStartTime', 'nextReservationEndTime',
 		'lastInuseAt')
-	
+	devices = [ { k: d[k] for k in keys if k in d} for d in devices]
 	for d in devices:
 		d.update((k, iso8601.parse_date(d[k])) for k in datekeys if k in d)
-	
+		d['is_available'] = (d['availability'] == 'Online')
 	return devices
+
+def print_offline_devices(devices):
+	recent_offlines = filter(lambda d: 'lastDisconnectedAt' in d and not d['is_available'] and (now - d['lastDisconnectedAt']) <= maxdelta, devices)
+	
+	print('The following devices have been offline for less than %d seconds:' % (check_seconds))
+	for d in recent_offlines:
+		print('%s (%s)\n\t%s\n\t%s' % (d['name'], d['friendlyModel'], d['model'], d['id']))
+
 
 with query_devices({'enabled': True, 'availability': 'Offline'}) as res:
 	res.raise_for_status()
@@ -41,8 +47,5 @@ with query_devices({'enabled': True, 'availability': 'Offline'}) as res:
 	data = json.loads(res.content)
 	keys = ('name', 'id', 'availability', 'enabled', 'model', 'friendlyModel', 'lastDisconnectedAt')
 	devices = massage_devices(data, keys)
-	
-	recent_offlines = filter(lambda d: 'lastDisconnectedAt' in d and d['availability'] == 'Offline' and (now - d['lastDisconnectedAt']) <= maxdelta, devices)
-	
-	pp.pprint(devices)
-	pp.pprint(list(recent_offlines))
+		
+	print_offline_devices(devices)
